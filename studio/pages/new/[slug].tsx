@@ -4,7 +4,7 @@ import { debounce, isUndefined, values } from 'lodash'
 import { toJS } from 'mobx'
 import { observer } from 'mobx-react-lite'
 import generator from 'generate-password'
-import { Button, Listbox, IconUsers, Input, Alert } from 'ui'
+import { Button, Listbox, IconUsers, Input, Alert, IconHelpCircle, Toggle } from 'ui'
 import { PermissionAction } from '@supabase/shared-types/out/constants'
 
 import { NextPageWithLayout } from 'types'
@@ -33,6 +33,7 @@ import {
   NotOrganizationOwnerWarning,
   EmptyPaymentMethodWarning,
 } from 'components/interfaces/Organization/NewProject'
+import SpendCapModal from 'components/interfaces/Billing/SpendCapModal'
 
 const Wizard: NextPageWithLayout = () => {
   const router = useRouter()
@@ -54,6 +55,10 @@ const Wizard: NextPageWithLayout = () => {
   const [passwordStrengthWarning, setPasswordStrengthWarning] = useState('')
   const [passwordStrengthScore, setPasswordStrengthScore] = useState(0)
   const [paymentMethods, setPaymentMethods] = useState<any[] | undefined>(undefined)
+
+  const [showSpendCapHelperModal, setShowSpendCapHelperModal] = useState(false)
+
+  const [isSpendCapEnabled, setIsSpendCapEnabled] = useState(true)
 
   const organizations = values(toJS(app.organizations.list()))
   const currentOrg = organizations.find((o: any) => o.slug === slug)
@@ -150,13 +155,16 @@ const Wizard: NextPageWithLayout = () => {
 
   const onClickNext = async () => {
     setNewProjectLoading(true)
+
+    const dbTier = dbPricingTierKey === 'PRO' && !isSpendCapEnabled ? 'PAYG' : dbPricingTierKey
+
     const data: Record<string, any> = {
       cloud_provider: PROVIDERS.AWS.id, // hardcoded for DB instances to be under AWS
       org_id: currentOrg?.id,
       name: projectName,
       db_pass: dbPass,
       db_region: dbRegion,
-      db_pricing_tier_id: (PRICING_TIER_PRODUCT_IDS as any)[dbPricingTierKey],
+      db_pricing_tier_id: (PRICING_TIER_PRODUCT_IDS as any)[dbTier],
       kps_enabled: kpsEnabled,
     }
     if (postgresVersion) {
@@ -420,6 +428,47 @@ const Wizard: NextPageWithLayout = () => {
                   <EmptyPaymentMethodWarning stripeCustomerId={stripeCustomerId} />
                 )}
               </Panel.Content>
+            )}
+
+            {!isSelectFreeTier && (
+              <>
+                <Panel.Content className="border-b Form section-block--body has-inputs-centered border-panel-border-interior-light dark:border-panel-border-interior-dark">
+                  <Toggle
+                    id="project-name"
+                    layout="horizontal"
+                    label={
+                      <div className="flex space-x-4">
+                        <span>Spend Cap</span>
+                        <IconHelpCircle
+                          size={16}
+                          strokeWidth={1.5}
+                          className="transition opacity-50 cursor-pointer hover:opacity-100"
+                          onClick={() => setShowSpendCapHelperModal(true)}
+                        />
+                      </div>
+                    }
+                    placeholder="Project name"
+                    checked={isSpendCapEnabled}
+                    onChange={() => setIsSpendCapEnabled(!isSpendCapEnabled)}
+                    descriptionText={
+                      <div>
+                        <p>
+                          Pro projects have the spend cap enabled by default to control your costs.
+                          When enabled, usage will be limited to your plan's quota, and the project
+                          will experience restrictions when exhausting limits. To seamlessly scale
+                          beyond the Pro limits without restrictions, disable the spend cap and you'll
+                          be charged for overusage beyond your quota.
+                        </p>
+                      </div>
+                    }
+                  />
+                </Panel.Content>
+
+                <SpendCapModal
+                  visible={showSpendCapHelperModal}
+                  onHide={() => setShowSpendCapHelperModal(false)}
+                />
+              </>
             )}
           </>
         )}
